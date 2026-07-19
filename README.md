@@ -354,7 +354,7 @@ Smart-Hostel-Complaint-Management/
            ├─────────────────────────────────┐
            │                                 │
     ┌──────▼─────────────┐      ┌───────────▼──────┐
-    │  staff_profiles     │      │  complaints      │
+    │  staff_profiles     │      │  complaints     │
     ├────────────────────┤      ├──────────────────┤
     │ id (PK)            │      │ id (PK)          │
     │ user_id (FK)       │      │ student_email    │
@@ -363,7 +363,7 @@ Smart-Hostel-Complaint-Management/
     │ availability_status│      │ category         │
     └────────────────────┘      │ priority         │
                                 │ status           │
-        ┌───────────────────────▶│ assigned_to      │
+        ┌───────────────────────▶│ assigned_to     │
         │                       │ created_at       │
         │                       │ updated_at       │
         │                       └──────────┬───────┘
@@ -759,13 +759,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 👨‍💻 Author
-
-**Shreekrishna Patil**
-- GitHub: [@Shreekrishnapatil7588](https://github.com/Shreekrishnapatil7588)
-- Email: shreekrishnapatil7588@gmail.com
-
----
 
 ## 🙏 Acknowledgments
 
@@ -773,16 +766,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Express.js Community** for framework excellence
 - **Bcrypt & JWT** for security best practices
 - **All Contributors** who have helped improve this project
-
----
-
-## 📞 Support
-
-For support, questions, or bug reports:
-
-1. 📧 **Email:** [Create an issue on GitHub](https://github.com/Shreekrishnapatil7588/Smart-Hostel-Complaint-Management/issues)
-2. 💬 **Discussions:** Use GitHub Discussions for feature requests
-3. 🐛 **Bug Reports:** Create a detailed issue with reproduction steps
 
 ---
 
