@@ -183,7 +183,7 @@ mysql --version
 #### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/Shreekrishnapatil7588/Smart-Hostel-Complaint-Management.git
+git clone https://github.com/krishnamx07/Smart-Hostel-Complaint-Management-System.git
 cd Smart-Hostel-Complaint-Management
 ```
 
