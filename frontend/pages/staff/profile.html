@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile — Staff Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left"><h1>My Profile</h1><div class="breadcrumb">Staff account info</div></div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">🔔 <span class="notif-badge" id="notifBadge"></span></div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header"><h4>Notifications</h4></div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+    <div class="page-body" style="max-width:600px;">
+      <div id="profileContent"><div class="loading" style="padding:60px;"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+<script src="/js/api.js"></script>
+<script>
+  (async () => {
+    const user = await auth.requireAuth(['staff']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('staff', user, '/staff/profile');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    const data = await api.get('/api/staff/dashboard');
+    const profile = data?.profile || user;
+    document.getElementById('profileContent').innerHTML = `
+      <div class="card mb-lg" style="display:flex;align-items:center;gap:var(--gap-lg);">
+        <div style="width:72px;height:72px;border-radius:50%;background:var(--maroon);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:white;flex-shrink:0;">${(profile.full_name||'S')[0].toUpperCase()}</div>
+        <div>
+          <h2 style="font-size:20px;margin-bottom:4px;">${escHtml(profile.full_name||user.full_name)}</h2>
+          <p class="text-muted text-sm">${escHtml(profile.email||user.email)}</p>
+          <span class="badge badge-role-staff mt-sm" style="display:inline-flex;margin-top:6px;">🔧 Staff Member</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:var(--gap-lg);">📋 Department Info</h3>
+        <div style="display:flex;flex-direction:column;gap:14px;font-size:14px;">
+          <div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid var(--border);">
+            <span class="text-muted">Department</span><strong>${capitalize(profile.department||'—')}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid var(--border);">
+            <span class="text-muted">Shift</span><strong>${capitalize(profile.shift||'—')} shift</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid var(--border);">
+            <span class="text-muted">Phone</span><strong>${escHtml(user.phone||'—')}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span class="text-muted">Member Since</span><strong>${formatDate(user.created_at||new Date())}</strong>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <p class="text-muted text-sm">To update your profile details or change your password, please contact the hostel administrator.</p>
+      </div>`;
+  })();
+
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>

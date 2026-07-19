@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register — Hostel Complaint Portal</title>
+  <meta name="description" content="Register as a new student on the Hostel Complaint Management System.">
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body class="auth-page">
+
+  <div class="auth-card" style="max-width:480px;">
+    <div class="auth-header">
+      <div class="auth-logo" role="img" aria-label="Hostel icon">🏨</div>
+      <h1 class="auth-title">Student Registration</h1>
+      <p class="auth-subtitle">Create your hostel portal account</p>
+    </div>
+
+    <form id="registerForm" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="full_name">Full Name <span class="required">*</span></label>
+        <input class="form-control" type="text" id="full_name" placeholder="e.g. Arjun Mehta" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="email">Email Address <span class="required">*</span></label>
+        <input class="form-control" type="email" id="email" placeholder="e.g. arjun@hostel.com" required>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" for="room_number">Room Number</label>
+          <input class="form-control" type="text" id="room_number" placeholder="e.g. A101">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" for="phone">Phone</label>
+          <input class="form-control" type="tel" id="phone" placeholder="e.g. 9876543210">
+        </div>
+      </div>
+      <div style="margin-bottom:var(--gap-lg);"></div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password <span class="required">*</span></label>
+        <input class="form-control" type="password" id="password" placeholder="Minimum 6 characters" required>
+        <span class="form-hint">At least 6 characters long.</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="confirm_password">Confirm Password <span class="required">*</span></label>
+        <input class="form-control" type="password" id="confirm_password" placeholder="Re-enter password" required>
+      </div>
+
+      <div id="regError" class="form-error" style="display:none;font-size:14px;padding:10px 12px;background:#FEF2F2;border-radius:6px;border:1px solid #FCA5A5;margin-bottom:var(--gap-md);"></div>
+      <div id="regSuccess" style="display:none;font-size:14px;padding:10px 12px;background:#F0FDF4;border-radius:6px;border:1px solid #86EFAC;color:#15803D;margin-bottom:var(--gap-md);"></div>
+
+      <button class="btn btn-primary w-full" type="submit" id="regBtn" style="padding:12px;">
+        <span id="regBtnText">Create Account</span>
+      </button>
+    </form>
+
+    <div class="divider"></div>
+    <p style="text-align:center;font-size:14px;color:var(--charcoal-light);">
+      Already have an account? <a href="/login" style="color:var(--maroon);font-weight:600;">Sign in</a>
+    </p>
+  </div>
+
+  <div class="toast-container"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const full_name       = document.getElementById('full_name').value.trim();
+      const email           = document.getElementById('email').value.trim();
+      const room_number     = document.getElementById('room_number').value.trim();
+      const phone           = document.getElementById('phone').value.trim();
+      const password        = document.getElementById('password').value;
+      const confirm_password= document.getElementById('confirm_password').value;
+      const errEl           = document.getElementById('regError');
+      const successEl       = document.getElementById('regSuccess');
+      const btn             = document.getElementById('regBtn');
+      const btnText         = document.getElementById('regBtnText');
+
+      errEl.style.display = 'none';
+      successEl.style.display = 'none';
+
+      if (!full_name || !email || !password) {
+        errEl.textContent = 'Name, email, and password are required.';
+        errEl.style.display = 'block'; return;
+      }
+      if (password.length < 6) {
+        errEl.textContent = 'Password must be at least 6 characters.';
+        errEl.style.display = 'block'; return;
+      }
+      if (password !== confirm_password) {
+        errEl.textContent = 'Passwords do not match.';
+        errEl.style.display = 'block'; return;
+      }
+
+      btn.disabled = true;
+      btnText.textContent = 'Creating account…';
+
+      const data = await api.post('/api/auth/register', { full_name, email, password, phone, room_number });
+
+      if (data && data.success) {
+        successEl.textContent = '✅ Account created! Redirecting to login…';
+        successEl.style.display = 'block';
+        setTimeout(() => window.location.href = '/login', 1800);
+      } else {
+        errEl.textContent = (data && data.message) || 'Registration failed.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btnText.textContent = 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>

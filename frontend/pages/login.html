@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Hostel Complaint Portal</title>
+  <meta name="description" content="Sign in to the Smart Hostel Complaint Management System.">
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body class="auth-page">
+
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="auth-logo" role="img" aria-label="Hostel icon">🏨</div>
+      <h1 class="auth-title">Hostel Portal</h1>
+      <p class="auth-subtitle">Smart Complaint Management System</p>
+    </div>
+
+    <form id="loginForm" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="email">Email Address <span class="required">*</span></label>
+        <input class="form-control" type="email" id="email" name="email"
+               placeholder="e.g. arjun@hostel.com" autocomplete="email" required>
+        <span class="form-error">Please enter a valid email.</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password <span class="required">*</span></label>
+        <div style="position:relative;">
+          <input class="form-control" type="password" id="password" name="password"
+                 placeholder="Enter your password" autocomplete="current-password" required>
+          <button type="button" id="togglePwd" onclick="togglePassword()"
+                  style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:16px;cursor:pointer;color:var(--charcoal-light);">👁️</button>
+        </div>
+        <span class="form-error">Password is required.</span>
+      </div>
+
+      <div id="loginError" class="form-error" style="display:none;font-size:14px;padding:10px 12px;background:#FEF2F2;border-radius:6px;border:1px solid #FCA5A5;"></div>
+
+      <button class="btn btn-primary w-full" type="submit" id="loginBtn" style="margin-top:8px;padding:12px;">
+        <span id="loginBtnText">Sign In</span>
+      </button>
+    </form>
+
+    <div class="divider"></div>
+
+    <p style="text-align:center;font-size:14px;color:var(--charcoal-light);">
+      New student?
+      <a href="/register" style="color:var(--maroon);font-weight:600;">Register here</a>
+    </p>
+
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    // Redirect if already logged in
+    (async () => {
+      const user = await auth.init();
+      if (user) window.location.href = `/${user.role}/dashboard`;
+    })();
+
+    function togglePassword() {
+      const pwd = document.getElementById('password');
+      pwd.type = pwd.type === 'password' ? 'text' : 'password';
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const errEl    = document.getElementById('loginError');
+      const btn      = document.getElementById('loginBtn');
+      const btnText  = document.getElementById('loginBtnText');
+
+      errEl.style.display = 'none';
+
+      if (!email || !password) {
+        errEl.textContent = 'Please enter your email and password.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btnText.textContent = 'Signing in…';
+
+      const data = await api.post('/api/auth/login', { email, password });
+
+      if (data && data.success) {
+        toast.success('Login successful! Redirecting…');
+        setTimeout(() => {
+          window.location.href = `/${data.user.role}/dashboard`;
+        }, 800);
+      } else {
+        errEl.textContent = (data && data.message) || 'Login failed. Please try again.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btnText.textContent = 'Sign In';
+      }
+    });
+  </script>
+</body>
+</html>

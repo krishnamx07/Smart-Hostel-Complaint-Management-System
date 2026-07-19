@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Complaint Detail — Staff Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1 id="pageTitle">Complaint Detail</h1>
+          <div class="breadcrumb"><a href="/staff/complaints">Complaints</a> / Detail</div>
+        </div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">
+          🔔 <span class="notif-badge" id="notifBadge"></span>
+        </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header"><h4>Notifications</h4></div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+      <div id="content"><div class="loading" style="padding:60px;"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Status Update Modal -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">🔄 Update Status</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label" for="newStatus">New Status <span class="required">*</span></label>
+        <div class="select-wrapper">
+          <select class="form-control" id="newStatus">
+            <option value="in_progress">🔧 In Progress</option>
+            <option value="resolved">✅ Resolved (Fixed!)</option>
+            <option value="rejected">❌ Rejected (Declined)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="remark">Remark <span class="required">*</span></label>
+        <textarea class="form-control" id="remark" rows="4" placeholder="Describe what action was taken, why it was resolved/rejected, etc. (required)"></textarea>
+        <span class="form-hint">A remark is mandatory when updating complaint status.</span>
+      </div>
+      <div id="modalError" class="form-error" style="display:none;font-size:13px;padding:8px 10px;background:#FEF2F2;border-radius:4px;border:1px solid #FCA5A5;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="updateBtn" onclick="submitUpdate()">✅ Update Status</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  const complaintId = window.location.pathname.split('/').pop();
+
+  (async () => {
+    const user = await auth.requireAuth(['staff']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('staff', user, '/staff/complaints');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    await loadDetail();
+  })();
+
+  async function loadDetail() {
+    const data = await api.get(`/api/staff/complaints/${complaintId}`);
+    if (!data || !data.success) {
+      document.getElementById('content').innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><h3>Complaint not found</h3><p>This complaint may not be assigned to you.</p><a href="/staff/complaints" class="btn btn-primary mt-md">← Back</a></div>`;
+      return;
+    }
+    const { complaint: c, logs } = data;
+    document.getElementById('pageTitle').textContent = `#${c.complaint_id}`;
+
+    const canUpdate = c.status !== 'resolved' && c.status !== 'rejected';
+
+    document.getElementById('content').innerHTML = `
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:var(--gap-lg);">
+        <div>
+          <div class="card mb-lg">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:var(--gap-md);">
+              <div>
+                <div class="text-xs text-mono text-muted mb-sm">#${c.complaint_id}</div>
+                <h2 style="font-size:18px;margin-bottom:8px;">${escHtml(c.title)}</h2>
+                <div style="display:flex;gap:var(--gap-sm);flex-wrap:wrap;margin-bottom:var(--gap-md);">
+                  ${statusBadge(c.status)} ${priorityBadge(c.priority)}
+                  <span class="badge" style="background:var(--beige-dark);color:var(--charcoal-mid);">${categoryIcon(c.category)} ${capitalize(c.category)}</span>
+                </div>
+              </div>
+              ${canUpdate ? `<button class="btn btn-amber" onclick="openModal()">🔄 Update Status</button>` : ''}
+            </div>
+            <div class="divider"></div>
+            <h4 style="margin-bottom:8px;">📝 Description</h4>
+            <p style="font-size:14px;line-height:1.7;color:var(--charcoal-mid);white-space:pre-wrap;">${escHtml(c.description)}</p>
+          </div>
+
+          <!-- Timeline -->
+          <div class="card">
+            <h4 style="margin-bottom:var(--gap-lg);">🕐 Status History</h4>
+            ${logs.length
+              ? `<div class="timeline">${logs.map(l => `
+                  <div class="timeline-item status-${l.new_status||'pending'}">
+                    <div class="timeline-dot">${{pending:'⏳',in_progress:'🔧',resolved:'✅',rejected:'❌'}[l.new_status]||'•'}</div>
+                    <div class="timeline-content">
+                      <div class="timeline-header">
+                        <div class="timeline-title">→ ${capitalize(l.new_status?.replace('_',' ')||'')}</div>
+                        <div class="timeline-time">${formatDateTime(l.changed_at)}</div>
+                      </div>
+                      ${l.remark ? `<div class="timeline-remark">${escHtml(l.remark)}</div>` : ''}
+                      <div class="timeline-by">By: ${escHtml(l.changed_by_name)}</div>
+                    </div>
+                  </div>`).join('')}
+                </div>`
+              : `<p class="text-muted text-sm">No status changes yet.</p>`}
+          </div>
+        </div>
+
+        <!-- Info Panel -->
+        <div>
+          <div class="card mb-lg">
+            <h4 style="margin-bottom:var(--gap-md);">🎓 Student Info</h4>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Name</span><strong>${escHtml(c.student_name)}</strong></div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Room</span><strong>${escHtml(c.room_number||'—')}</strong></div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Email</span><span class="text-xs">${escHtml(c.student_email)}</span></div>
+              ${c.student_phone ? `<div style="display:flex;justify-content:space-between;"><span class="text-muted">Phone</span><span>${escHtml(c.student_phone)}</span></div>` : ''}
+            </div>
+          </div>
+          <div class="card mb-lg">
+            <h4 style="margin-bottom:var(--gap-md);">📋 Complaint Info</h4>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Status</span>${statusBadge(c.status)}</div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Priority</span>${priorityBadge(c.priority)}</div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Submitted</span><span class="text-xs">${formatDate(c.created_at)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Updated</span><span class="text-xs">${formatDate(c.updated_at)}</span></div>
+            </div>
+          </div>
+          <a href="/staff/complaints" class="btn btn-ghost w-full" style="justify-content:center;">← Back</a>
+        </div>
+      </div>`;
+  }
+
+  function openModal()  { document.getElementById('statusModal').classList.add('open'); }
+  function closeModal() { document.getElementById('statusModal').classList.remove('open'); document.getElementById('modalError').style.display='none'; }
+
+  async function submitUpdate() {
+    const new_status = document.getElementById('newStatus').value;
+    const remark     = document.getElementById('remark').value.trim();
+    const errEl      = document.getElementById('modalError');
+    errEl.style.display = 'none';
+
+    if (!remark) { errEl.textContent = 'A remark is required.'; errEl.style.display = 'block'; return; }
+
+    const btn = document.getElementById('updateBtn');
+    btn.disabled = true; btn.textContent = 'Updating…';
+
+    const data = await api.put(`/api/staff/complaints/${complaintId}/status`, { new_status, remark });
+
+    if (data && data.success) {
+      toast.success('Status updated successfully!');
+      closeModal();
+      await loadDetail();
+    } else {
+      errEl.textContent = data?.message || 'Update failed.';
+      errEl.style.display = 'block';
+    }
+    btn.disabled = false; btn.textContent = '✅ Update Status';
+  }
+
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>

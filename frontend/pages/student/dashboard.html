@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Dashboard — Hostel Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1>Dashboard</h1>
+          <div class="breadcrumb">Welcome back, <span id="headerName">—</span></div>
+        </div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">
+          🔔 <span class="notif-badge" id="notifBadge"></span>
+        </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header">
+            <h4>Notifications</h4>
+            <span class="notif-read-all" onclick="notifications.markAllRead()">Mark all read</span>
+          </div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+      <!-- Stats Grid -->
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card maroon skeleton" style="height:100px;"></div>
+        <div class="stat-card amber skeleton" style="height:100px;"></div>
+        <div class="stat-card blue skeleton" style="height:100px;"></div>
+        <div class="stat-card green skeleton" style="height:100px;"></div>
+      </div>
+
+      <div class="dashboard-grid">
+        <!-- Recent Complaints Notice Board -->
+        <div>
+          <h2 class="section-title">📋 Recent Complaints</h2>
+          <div class="notice-board" id="recentBoard">
+            <div class="notice-board-header">
+              <span style="font-size:22px;">📌</span>
+              <span class="notice-board-title">My Latest Submissions</span>
+            </div>
+            <div id="recentSlips">
+              <div class="loading"><div class="spinner"></div></div>
+            </div>
+          </div>
+          <div style="margin-top:var(--gap-md);text-align:right;">
+            <a href="/student/my-complaints" class="btn btn-outline btn-sm">View All Complaints →</a>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div>
+          <h2 class="section-title">⚡ Quick Actions</h2>
+          <div style="display:flex;flex-direction:column;gap:var(--gap-sm);">
+            <a href="/student/raise-complaint" class="btn btn-primary" style="justify-content:center;">
+              📝 Raise New Complaint
+            </a>
+            <a href="/student/my-complaints" class="btn btn-ghost" style="justify-content:center;">
+              📋 View All Complaints
+            </a>
+            <a href="/student/profile" class="btn btn-ghost" style="justify-content:center;">
+              👤 Edit My Profile
+            </a>
+          </div>
+
+          <div style="margin-top:var(--gap-xl);">
+            <h2 class="section-title">ℹ️ Info</h2>
+            <div class="card" id="profileCard">
+              <div class="loading"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  let currentUser = null;
+
+  (async () => {
+    currentUser = await auth.requireAuth(['student']);
+    if (!currentUser) return;
+
+    document.getElementById('headerName').textContent = currentUser.full_name.split(' ')[0];
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('student', currentUser, '/student/dashboard');
+
+    await loadDashboard();
+    await notifications.loadBell(
+      document.getElementById('notifBell'),
+      document.getElementById('notifBadge'),
+      document.getElementById('notifDropdown')
+    );
+  })();
+
+  async function loadDashboard() {
+    const data = await api.get('/api/student/dashboard');
+    if (!data || !data.success) { toast.error('Failed to load dashboard.'); return; }
+
+    const { stats, recent } = data;
+
+    // Stats
+    document.getElementById('statsGrid').innerHTML = `
+      <div class="stat-card maroon">
+        <div class="stat-icon">📋</div>
+        <div><div class="stat-value">${stats.total || 0}</div><div class="stat-label">Total Complaints</div></div>
+      </div>
+      <div class="stat-card amber">
+        <div class="stat-icon">⏳</div>
+        <div><div class="stat-value">${stats.pending || 0}</div><div class="stat-label">Pending</div></div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon">🔧</div>
+        <div><div class="stat-value">${stats.in_progress || 0}</div><div class="stat-label">In Progress</div></div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-icon">✅</div>
+        <div><div class="stat-value">${stats.resolved || 0}</div><div class="stat-label">Resolved</div></div>
+      </div>`;
+
+    // Recent slips
+    const slipsEl = document.getElementById('recentSlips');
+    if (!recent.length) {
+      slipsEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><p>No complaints yet. <a href="/student/raise-complaint">Raise one!</a></p></div>`;
+      return;
+    }
+    slipsEl.innerHTML = recent.map(c => `
+      <div class="complaint-slip priority-${c.priority}" onclick="location.href='/student/complaint/${c.complaint_id}'">
+        <div class="slip-pin"></div>
+        <div class="slip-category">${categoryIcon(c.category)} ${capitalize(c.category)}</div>
+        <div class="slip-title">${escHtml(c.title)}</div>
+        <div class="slip-footer">
+          <span style="font-family:var(--font-mono);font-size:11px;">#${c.complaint_id}</span>
+          ${statusBadge(c.status)}
+        </div>
+      </div>`).join('');
+
+    // Profile card
+    document.getElementById('profileCard').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;">
+        <div style="display:flex;justify-content:space-between;">
+          <span class="text-muted">Room</span>
+          <strong>${escHtml(currentUser.room_number || '—')}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span class="text-muted">Email</span>
+          <strong>${escHtml(currentUser.email)}</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span class="text-muted">Role</span>
+          <span class="badge badge-role-student">Student</span>
+        </div>
+      </div>`;
+  }
+
+  function toggleNotifDropdown() {
+    document.getElementById('notifDropdown').classList.toggle('open');
+  }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown')) {
+      document.getElementById('notifDropdown')?.classList.remove('open');
+    }
+  });
+</script>
+</body>
+</html>

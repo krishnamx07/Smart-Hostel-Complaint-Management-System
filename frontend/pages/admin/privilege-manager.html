@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privilege Manager — Admin Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1>Privilege Manager</h1>
+          <div class="breadcrumb">MySQL GRANT / REVOKE — DBA Control Center</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-ghost btn-sm" onclick="loadPrivileges()">🔄 Refresh</button>
+      </div>
+    </header>
+
+    <div class="page-body">
+      <!-- Intro / DBA Explanation -->
+      <div class="card mb-lg" style="background:linear-gradient(135deg,rgba(123,31,46,0.05) 0%,rgba(200,134,42,0.05) 100%);border-color:var(--border-dark);">
+        <div style="display:flex;align-items:flex-start;gap:var(--gap-md);">
+          <span style="font-size:30px;">🔐</span>
+          <div>
+            <h3 style="margin-bottom:6px;">MySQL Role-Based Access Control</h3>
+            <p class="text-sm text-muted">This interface controls database-level privileges for the three MySQL DB users: <code class="text-mono" style="background:var(--beige-dark);padding:1px 5px;border-radius:3px;">hostel_student</code>, <code class="text-mono" style="background:var(--beige-dark);padding:1px 5px;border-radius:3px;">hostel_staff</code>, and <code class="text-mono" style="background:var(--beige-dark);padding:1px 5px;border-radius:3px;">hostel_admin</code>. Toggling a switch executes <strong>GRANT</strong> or <strong>REVOKE</strong> SQL statements in real-time on the MySQL server.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Grant Log -->
+      <div class="card mb-lg" id="sqlLogCard" style="display:none;">
+        <h4 style="margin-bottom:8px;">📟 Last Executed SQL</h4>
+        <code id="sqlLog" style="font-family:var(--font-mono);font-size:12px;color:var(--status-resolved);background:var(--charcoal);padding:10px 14px;border-radius:6px;display:block;word-break:break-all;"></code>
+      </div>
+
+      <!-- Privilege Matrix -->
+      <div class="table-wrapper mb-xl">
+        <div class="table-header">
+          <h3>📊 Privilege Matrix</h3>
+          <span class="text-sm text-muted">Toggle = GRANT / REVOKE in MySQL</span>
+        </div>
+        <div id="matrixContainer">
+          <div class="loading" style="padding:48px;"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- Raw SHOW GRANTS -->
+      <h2 class="section-title">🔍 Raw SHOW GRANTS Output</h2>
+      <div id="rawGrants">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  const DB_USERS = ['hostel_student', 'hostel_staff', 'hostel_admin'];
+  const TABLES   = ['users', 'complaints', 'complaint_logs', 'staff_profiles', 'notifications'];
+  const PRIVS    = ['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
+
+  // Default expected privilege matrix for display reference
+  const DEFAULT_MATRIX = {
+    hostel_student: { users: ['SELECT'], complaints: ['SELECT','INSERT'], complaint_logs: ['SELECT'], notifications: ['SELECT'], staff_profiles: [] },
+    hostel_staff:   { users: ['SELECT'], complaints: ['SELECT','UPDATE'], complaint_logs: ['SELECT','INSERT'], notifications: ['SELECT','INSERT'], staff_profiles: ['SELECT'] },
+    hostel_admin:   { users: ['SELECT','INSERT','UPDATE','DELETE'], complaints: ['SELECT','INSERT','UPDATE','DELETE'], complaint_logs: ['SELECT','INSERT','UPDATE','DELETE'], notifications: ['SELECT','INSERT','UPDATE','DELETE'], staff_profiles: ['SELECT','INSERT','UPDATE','DELETE'] }
+  };
+
+  // Working state — tracks what toggled on/off
+  let currentMatrix = JSON.parse(JSON.stringify(DEFAULT_MATRIX));
+
+  (async () => {
+    const user = await auth.requireAuth(['admin']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('admin', user, '/admin/privilege-manager');
+    await loadPrivileges();
+  })();
+
+  async function loadPrivileges() {
+    const data = await api.get('/api/admin/privileges');
+    if (!data || !data.success) { toast.error('Failed to load privileges.'); return; }
+    renderMatrix(currentMatrix);
+    renderRawGrants(data.privileges);
+  }
+
+  function renderMatrix(matrix) {
+    const html = `
+      <div style="overflow-x:auto;">
+        <table class="priv-matrix">
+          <thead>
+            <tr>
+              <th>Table \ DB User</th>
+              ${DB_USERS.map(u => `<th>
+                <div style="font-size:11px;margin-bottom:2px;">${u.replace('hostel_','')}</div>
+                <div style="font-size:10px;opacity:0.7;font-family:var(--font-mono);">${u}</div>
+              </th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${TABLES.map(table => `
+              <tr>
+                <td style="font-family:var(--font-mono);font-size:12px;font-weight:600;">${table}</td>
+                ${DB_USERS.map(dbUser => `
+                  <td>
+                    <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
+                      ${PRIVS.map(priv => {
+                        const hasPriv = (matrix[dbUser][table] || []).includes(priv);
+                        const isAdmin = dbUser === 'hostel_admin';
+                        return `
+                          <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--charcoal-mid);">
+                            <label class="toggle-switch">
+                              <input type="checkbox"
+                                     id="toggle_${dbUser}_${table}_${priv}"
+                                     ${hasPriv || isAdmin ? 'checked' : ''}
+                                     ${isAdmin ? 'disabled' : ''}
+                                     onchange="handleToggle('${dbUser}','${table}','${priv}',this.checked)">
+                              <span class="toggle-slider"></span>
+                            </label>
+                            <span>${priv}</span>
+                          </div>`;
+                      }).join('')}
+                    </div>
+                  </td>`).join('')}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:var(--gap-md);background:var(--beige);border-top:1px solid var(--border);font-size:12px;color:var(--charcoal-light);">
+        ℹ️ Greyed-out toggles for <code class="text-mono">hostel_admin</code> indicate full ALL PRIVILEGES which cannot be partially toggled.
+      </div>`;
+    document.getElementById('matrixContainer').innerHTML = html;
+  }
+
+  async function handleToggle(dbUser, table, priv, isChecked) {
+    const endpoint = isChecked ? '/api/admin/privileges/grant' : '/api/admin/privileges/revoke';
+    const action   = isChecked ? 'Granting' : 'Revoking';
+
+    toast.info(`${action} ${priv} on ${table} to ${dbUser}…`, 2000);
+
+    const data = await api.post(endpoint, { db_user: dbUser, privilege: priv, table_name: table });
+    if (data && data.success) {
+      toast.success(`${isChecked?'Granted':'Revoked'}: ${priv} on ${table}`);
+
+      // Update local state
+      if (!currentMatrix[dbUser][table]) currentMatrix[dbUser][table] = [];
+      if (isChecked) {
+        if (!currentMatrix[dbUser][table].includes(priv)) currentMatrix[dbUser][table].push(priv);
+      } else {
+        currentMatrix[dbUser][table] = currentMatrix[dbUser][table].filter(p => p !== priv);
+      }
+
+      // Show SQL in log
+      document.getElementById('sqlLogCard').style.display = 'block';
+      document.getElementById('sqlLog').textContent = data.executed_sql || '';
+    } else {
+      toast.error(data?.message || 'Operation failed.');
+      // Revert toggle
+      const el = document.getElementById(`toggle_${dbUser}_${table}_${priv}`);
+      if (el) el.checked = !isChecked;
+    }
+  }
+
+  function renderRawGrants(privileges) {
+    const html = Object.entries(privileges).map(([user, grants]) => `
+      <div class="card mb-md">
+        <h4 style="font-family:var(--font-mono);color:var(--maroon);margin-bottom:var(--gap-sm);">${user}@localhost</h4>
+        <div style="background:var(--charcoal);border-radius:var(--radius-sm);padding:var(--gap-md);overflow-x:auto;">
+          ${grants.map(g => `<div style="font-family:var(--font-mono);font-size:12px;color:#86EFAC;line-height:1.8;">${escHtml(g)};</div>`).join('')}
+        </div>
+      </div>`).join('');
+    document.getElementById('rawGrants').innerHTML = html;
+  }
+</script>
+</body>
+</html>

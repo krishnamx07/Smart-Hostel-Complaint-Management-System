@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Management — Admin Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left"><h1>User Management</h1><div class="breadcrumb">Manage all hostel users</div></div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <a href="/admin/create-user" class="btn btn-primary btn-sm">➕ Create User</a>
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">🔔 <span class="notif-badge" id="notifBadge"></span></div>
+        <div class="notif-dropdown" id="notifDropdown"><div class="notif-dropdown-header"><h4>Notifications</h4></div><div class="notif-list"></div></div>
+      </div>
+    </header>
+    <div class="page-body">
+      <div class="table-wrapper">
+        <div class="filter-bar">
+          <div class="filter-search">
+            <span class="filter-search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="Search by name or email…" oninput="debounceSearch()">
+          </div>
+          <div class="select-wrapper">
+            <select class="form-control" id="roleFilter" onchange="loadUsers(1)">
+              <option value="">All Roles</option>
+              <option value="student">Student</option>
+              <option value="staff">Staff</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="resetFilters()">✕ Reset</button>
+        </div>
+        <div id="tableBody"><div class="loading" style="padding:48px;"><div class="spinner"></div></div></div>
+        <div class="table-footer">
+          <span id="tableInfo">Loading…</span>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <h3 class="modal-title">🗑️ Confirm Delete</h3>
+      <button class="modal-close" onclick="document.getElementById('deleteModal').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to delete <strong id="deleteUserName"></strong>?</p>
+      <p class="text-muted text-sm mt-sm">This will also remove their MySQL database user and all associated data. This action cannot be undone.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="document.getElementById('deleteModal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDelete()">🗑️ Delete User</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+<script src="/js/api.js"></script>
+<script>
+  let deleteUserId = null;
+  let searchTimeout = null;
+
+  (async () => {
+    const user = await auth.requireAuth(['admin']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('admin', user, '/admin/user-management');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    await loadUsers();
+  })();
+
+  async function loadUsers(page = 1) {
+    const search = document.getElementById('searchInput').value.trim();
+    const role   = document.getElementById('roleFilter').value;
+
+    let url = `/api/admin/users?page=${page}&limit=15`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (role)   url += `&role=${role}`;
+
+    const data = await api.get(url);
+    if (!data || !data.success) { toast.error('Failed to load users.'); return; }
+
+    const { users, pagination } = data;
+    document.getElementById('tableInfo').textContent = `Showing ${users.length} of ${pagination.total} users`;
+
+    if (!users.length) {
+      document.getElementById('tableBody').innerHTML = `<div class="empty-state"><div class="empty-state-icon">👥</div><h3>No users found</h3></div>`;
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    document.getElementById('tableBody').innerHTML = `
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Room/Dept</th><th>Phone</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+        <tbody>${users.map(u => `
+          <tr>
+            <td class="text-mono text-xs">#${u.user_id}</td>
+            <td style="font-weight:600;">${escHtml(u.full_name)}</td>
+            <td class="text-sm">${escHtml(u.email)}</td>
+            <td><span class="badge badge-role-${u.role}">${{student:'🎓',staff:'🔧',admin:'⚙️'}[u.role]} ${capitalize(u.role)}</span></td>
+            <td class="text-sm">${escHtml(u.room_number||'—')}</td>
+            <td class="text-sm">${escHtml(u.phone||'—')}</td>
+            <td>
+              <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:${u.is_active?'var(--status-resolved)':'var(--status-rejected)'};">
+                ${u.is_active?'● Active':'● Inactive'}
+              </span>
+            </td>
+            <td class="text-xs text-muted">${formatDate(u.created_at)}</td>
+            <td>
+              <div style="display:flex;gap:4px;">
+                <a href="/admin/edit-user/${u.user_id}" class="btn btn-ghost btn-sm btn-icon" title="Edit">✏️</a>
+                <button class="btn btn-ghost btn-sm btn-icon" onclick="toggleActive(${u.user_id}, ${u.is_active}, '${escHtml(u.full_name)}')" title="${u.is_active?'Deactivate':'Activate'}">${u.is_active?'🔴':'🟢'}</button>
+                <button class="btn btn-danger btn-sm btn-icon" onclick="openDelete(${u.user_id}, '${escHtml(u.full_name)}')" title="Delete">🗑️</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    buildPagination(document.getElementById('pagination'), page, Math.ceil(pagination.total/pagination.limit), `(p) => loadUsers(p)`);
+  }
+
+  async function toggleActive(id, currentlyActive, name) {
+    const data = await api.patch(`/api/admin/users/${id}/toggle`);
+    if (data && data.success) {
+      toast.success(`${name} ${data.is_active ? 'activated' : 'deactivated'}.`);
+      await loadUsers();
+    } else {
+      toast.error(data?.message || 'Toggle failed.');
+    }
+  }
+
+  function openDelete(id, name) {
+    deleteUserId = id;
+    document.getElementById('deleteUserName').textContent = name;
+    document.getElementById('deleteModal').classList.add('open');
+  }
+
+  async function confirmDelete() {
+    if (!deleteUserId) return;
+    const btn = document.getElementById('confirmDeleteBtn');
+    btn.disabled = true; btn.textContent = 'Deleting…';
+    const data = await api.delete(`/api/admin/users/${deleteUserId}`);
+    if (data && data.success) {
+      toast.success('User deleted successfully.');
+      document.getElementById('deleteModal').classList.remove('open');
+      await loadUsers();
+    } else {
+      toast.error(data?.message || 'Delete failed.');
+    }
+    btn.disabled = false; btn.textContent = '🗑️ Delete User';
+    deleteUserId = null;
+  }
+
+  function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => loadUsers(1), 400);
+  }
+  function resetFilters() {
+    document.getElementById('searchInput').value  = '';
+    document.getElementById('roleFilter').value   = '';
+    loadUsers(1);
+  }
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>

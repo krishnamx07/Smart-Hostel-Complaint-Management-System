@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard — Hostel Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1>Admin Dashboard</h1>
+          <div class="breadcrumb">System-wide analytics &amp; overview</div>
+        </div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <a href="/admin/create-user" class="btn btn-primary btn-sm">➕ Add User</a>
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">
+          🔔 <span class="notif-badge" id="notifBadge"></span>
+        </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header"><h4>Notifications</h4><span class="notif-read-all" onclick="notifications.markAllRead()">Mark all read</span></div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+      <!-- Main Stats -->
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card maroon skeleton" style="height:100px;"></div>
+        <div class="stat-card amber skeleton" style="height:100px;"></div>
+        <div class="stat-card blue skeleton" style="height:100px;"></div>
+        <div class="stat-card green skeleton" style="height:100px;"></div>
+        <div class="stat-card red skeleton" style="height:100px;"></div>
+      </div>
+
+      <!-- Charts -->
+      <div class="dashboard-grid mb-xl" style="margin-bottom:var(--gap-xl);">
+        <div class="chart-card">
+          <h4>📊 Complaints by Category</h4>
+          <div class="chart-container" style="height:280px;">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h4>📈 Status Distribution</h4>
+          <div class="chart-container" style="height:280px;">
+            <canvas id="statusChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Weekly Trend + Recent + Users -->
+      <div class="dashboard-grid">
+        <div>
+          <div class="chart-card mb-lg">
+            <h4>📅 Complaints This Week</h4>
+            <div class="chart-container" style="height:180px;">
+              <canvas id="trendChart"></canvas>
+            </div>
+          </div>
+
+          <h2 class="section-title">📋 Recent Complaints</h2>
+          <div class="table-wrapper">
+            <div id="recentTable"><div class="loading"><div class="spinner"></div></div></div>
+          </div>
+        </div>
+
+        <div>
+          <h2 class="section-title">👥 Users Overview</h2>
+          <div class="card" id="usersCard"><div class="loading"><div class="spinner"></div></div></div>
+
+          <div style="margin-top:var(--gap-lg);">
+            <h2 class="section-title" style="margin-top:var(--gap-md);">⚡ Quick Links</h2>
+            <div style="display:flex;flex-direction:column;gap:var(--gap-sm);">
+              <a href="/admin/complaints" class="btn btn-ghost" style="justify-content:flex-start;">📋 All Complaints</a>
+              <a href="/admin/user-management" class="btn btn-ghost" style="justify-content:flex-start;">👥 Manage Users</a>
+              <a href="/admin/privilege-manager" class="btn btn-ghost" style="justify-content:flex-start;">🔐 Privilege Manager</a>
+              <a href="/admin/reports" class="btn btn-ghost" style="justify-content:flex-start;">📈 Reports &amp; Export</a>
+              <hr class="divider" style="margin:4px 0;">
+              <button onclick="triggerBackup()" class="btn btn-primary btn-sm" style="justify-content:flex-start;">💾 Force Backup Sync</button>
+              <button onclick="triggerRestore()" class="btn btn-outline btn-sm" style="justify-content:flex-start;color:var(--text-danger);border-color:var(--text-danger);">🔄 Restore From Backup</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  let charts = {};
+
+  (async () => {
+    const user = await auth.requireAuth(['admin']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('admin', user, '/admin/dashboard');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    await loadDashboard();
+  })();
+
+  async function loadDashboard() {
+    const data = await api.get('/api/admin/dashboard');
+    if (!data || !data.success) { toast.error('Failed to load dashboard.'); return; }
+    const { overall, userCounts, byCategory, recent, weeklyTrend } = data;
+
+    // Stats Grid
+    document.getElementById('statsGrid').innerHTML = `
+      <div class="stat-card maroon"><div class="stat-icon">📋</div><div><div class="stat-value">${overall.total_complaints||0}</div><div class="stat-label">Total Complaints</div></div></div>
+      <div class="stat-card amber"><div class="stat-icon">⏳</div><div><div class="stat-value">${overall.pending||0}</div><div class="stat-label">Pending</div></div></div>
+      <div class="stat-card blue"><div class="stat-icon">🔧</div><div><div class="stat-value">${overall.in_progress||0}</div><div class="stat-label">In Progress</div></div></div>
+      <div class="stat-card green"><div class="stat-icon">✅</div><div><div class="stat-value">${overall.resolved_today||0}</div><div class="stat-label">Resolved Today</div></div></div>
+      <div class="stat-card red"><div class="stat-icon">📝</div><div><div class="stat-value">${overall.submitted_today||0}</div><div class="stat-label">Submitted Today</div></div></div>`;
+
+    // Category Chart (pie)
+    const catColors = { electrical:'#F59E0B', plumbing:'#3B82F6', cleanliness:'#10B981', food:'#EF4444', security:'#8B5CF6', noise:'#EC4899', other:'#6B7280' };
+    const catLabels = byCategory.map(b => `${capitalize(b.category)}`);
+    const catData   = byCategory.map(b => b.total);
+    const catBg     = byCategory.map(b => catColors[b.category] || '#9CA3AF');
+    renderChart('categoryChart', 'doughnut', catLabels, catData, catBg);
+
+    // Status Chart (bar)
+    renderChart('statusChart', 'bar',
+      ['Pending', 'In Progress', 'Resolved', 'Rejected'],
+      [overall.pending||0, overall.in_progress||0, overall.resolved||0, overall.rejected||0],
+      ['#D97706','#2563EB','#15803D','#DC2626']);
+
+    // Weekly trend (line)
+    const trendLabels = weeklyTrend.map(t => new Date(t.date).toLocaleDateString('en-IN',{weekday:'short',day:'numeric'}));
+    const trendData   = weeklyTrend.map(t => t.count);
+    renderTrend('trendChart', trendLabels, trendData);
+
+    // Recent complaints table
+    document.getElementById('recentTable').innerHTML = recent.length ? `
+      <table>
+        <thead><tr><th>ID</th><th>Title</th><th>Student</th><th>Status</th><th>Priority</th><th>Action</th></tr></thead>
+        <tbody>${recent.map(c => `
+          <tr>
+            <td class="text-mono text-xs">#${c.complaint_id}</td>
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(c.title)}</td>
+            <td>${escHtml(c.student_name)} <span class="text-xs text-muted">(${escHtml(c.room_number||'—')})</span></td>
+            <td>${statusBadge(c.status)}</td>
+            <td>${priorityBadge(c.priority)}</td>
+            <td><a href="/admin/complaint/${c.complaint_id}" class="btn btn-ghost btn-sm">View →</a></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : `<div class="empty-state"><p>No complaints yet.</p></div>`;
+
+    // Users card
+    const userMap = {};
+    userCounts.forEach(u => userMap[u.role] = u.count);
+    document.getElementById('usersCard').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:14px;font-size:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="text-muted">👨‍🎓 Students</span>
+          <span class="fw-600 text-mono" style="font-size:18px;">${userMap.student||0}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="text-muted">🔧 Staff</span>
+          <span class="fw-600 text-mono" style="font-size:18px;">${userMap.staff||0}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="text-muted">⚙️ Admins</span>
+          <span class="fw-600 text-mono" style="font-size:18px;">${userMap.admin||0}</span>
+        </div>
+        <div class="divider" style="margin:4px 0;"></div>
+        <a href="/admin/user-management" class="btn btn-outline btn-sm" style="justify-content:center;">Manage All Users →</a>
+      </div>`;
+  }
+
+  function renderChart(id, type, labels, data, colors) {
+    const ctx = document.getElementById(id).getContext('2d');
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(ctx, {
+      type,
+      data: { labels, datasets:[{ data, backgroundColor: colors, borderWidth: type === 'doughnut' ? 2 : 0, borderColor: '#FFFDF9', borderRadius: type === 'bar' ? 4 : 0 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: type === 'doughnut' ? 'right' : 'top', labels: { font: { family: 'Inter', size: 12 }, usePointStyle: true } } },
+        scales: type === 'bar' ? { y: { beginAtZero: true, ticks: { font: { family: 'Inter', size: 11 } } }, x: { ticks: { font: { family: 'Inter', size: 11 } } } } : {}
+      }
+    });
+  }
+
+  function renderTrend(id, labels, data) {
+    const ctx = document.getElementById(id).getContext('2d');
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{ label: 'Complaints', data, fill: true, tension: 0.4,
+          backgroundColor: 'rgba(123,31,46,0.1)', borderColor: '#7B1F2E', borderWidth: 2, pointBackgroundColor: '#7B1F2E', pointRadius: 4 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { font: { family: 'Inter', size: 11 }, stepSize: 1 } }, x: { ticks: { font: { family: 'Inter', size: 11 } } } }
+      }
+    });
+  }
+
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+
+  async function triggerBackup() {
+    if(!confirm('This will wipe the current backup database and clone everything from the main database. Proceed?')) return;
+    toast.info('Syncing to backup database, please wait...');
+    try {
+      const resp = await api.post('/api/admin/backup');
+      if (resp && resp.success) {
+        toast.success(resp.message || 'Backup synced successfully!');
+      } else {
+        toast.error(resp?.message || 'Failed to sync backup.');
+      }
+    } catch(e) {
+      toast.error('Error occurred syncing backup.');
+    }
+  }
+
+  async function triggerRestore() {
+    if(!confirm('WARNING: Restoring will OVERWRITE the main live database with data from the backup database. Are you absolutely sure?')) return;
+    toast.info('Restoring from backup database, please wait...');
+    try {
+      const resp = await api.post('/api/admin/restore');
+      if (resp && resp.success) {
+        toast.success(resp.message || 'Database restored successfully!');
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        toast.error(resp?.message || 'Restore failed.');
+      }
+    } catch(e) {
+      toast.error('Error occurred during restore.');
+    }
+  }
+</script>
+</body>
+</html>

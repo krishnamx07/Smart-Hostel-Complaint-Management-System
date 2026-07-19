@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Complaints — Staff Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1>Assigned Complaints</h1>
+          <div class="breadcrumb">Complaints assigned to you</div>
+        </div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">
+          🔔 <span class="notif-badge" id="notifBadge"></span>
+        </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header"><h4>Notifications</h4></div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+      <div class="table-wrapper">
+        <div class="filter-bar">
+          <div class="select-wrapper">
+            <select class="form-control" id="filterStatus" onchange="loadComplaints(1)">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('filterStatus').value='';loadComplaints(1)">✕ Reset</button>
+        </div>
+        <div id="tableBody"><div class="loading" style="padding:48px;"><div class="spinner"></div></div></div>
+        <div class="table-footer">
+          <span id="tableInfo">Loading…</span>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  (async () => {
+    const user = await auth.requireAuth(['staff']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('staff', user, '/staff/complaints');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    await loadComplaints();
+  })();
+
+  async function loadComplaints(page = 1) {
+    const status = document.getElementById('filterStatus').value;
+    let url = `/api/staff/complaints?page=${page}&limit=12`;
+    if (status) url += `&status=${status}`;
+
+    const data = await api.get(url);
+    if (!data || !data.success) { toast.error('Failed to load complaints.'); return; }
+
+    const { complaints, pagination } = data;
+    document.getElementById('tableInfo').textContent =
+      `Showing ${complaints.length} of ${pagination.total} assigned complaints`;
+
+    if (!complaints.length) {
+      document.getElementById('tableBody').innerHTML = `<div class="empty-state"><div class="empty-state-icon">🎉</div><h3>No complaints found</h3><p>Nothing assigned to you${status ? ' with this status' : ''} yet.</p></div>`;
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    document.getElementById('tableBody').innerHTML = `
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Category</th><th>Title</th><th>Student</th><th>Room</th><th>Priority</th><th>Status</th><th>Date</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          ${complaints.map(c => `
+            <tr>
+              <td class="text-mono text-xs">#${c.complaint_id}</td>
+              <td>${categoryIcon(c.category)} ${capitalize(c.category)}</td>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(c.title)}</td>
+              <td>${escHtml(c.student_name)}</td>
+              <td>${escHtml(c.room_number||'—')}</td>
+              <td>${priorityBadge(c.priority)}</td>
+              <td>${statusBadge(c.status)}</td>
+              <td class="text-xs text-muted">${formatDate(c.created_at)}</td>
+              <td><a href="/staff/complaint/${c.complaint_id}" class="btn btn-ghost btn-sm">View →</a></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    buildPagination(document.getElementById('pagination'), page, Math.ceil(pagination.total / pagination.limit),
+      `(p) => loadComplaints(p)`);
+  }
+
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>

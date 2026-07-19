@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Complaint Detail — Admin Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1 id="pageTitle">Complaint Detail</h1>
+          <div class="breadcrumb"><a href="/admin/complaints">Complaints</a> / Detail</div>
+        </div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">🔔 <span class="notif-badge" id="notifBadge"></span></div>
+        <div class="notif-dropdown" id="notifDropdown"><div class="notif-dropdown-header"><h4>Notifications</h4></div><div class="notif-list"></div></div>
+      </div>
+    </header>
+    <div class="page-body"><div id="content"><div class="loading" style="padding:60px;"><div class="spinner"></div></div></div></div>
+  </div>
+</div>
+
+<!-- Assign / Update Modal -->
+<div class="modal-overlay" id="updateModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">🔄 Update Complaint</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Override Status</label>
+        <div class="select-wrapper">
+          <select class="form-control" id="modalStatus">
+            <option value="">— Keep Current —</option>
+            <option value="pending">⏳ Pending</option>
+            <option value="in_progress">🔧 In Progress</option>
+            <option value="resolved">✅ Resolved</option>
+            <option value="rejected">❌ Rejected</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Assign to Staff</label>
+        <div class="select-wrapper">
+          <select class="form-control" id="modalStaff">
+            <option value="">— Keep Current —</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Admin Remark</label>
+        <textarea class="form-control" id="modalRemark" rows="3" placeholder="Optional admin note…"></textarea>
+      </div>
+      <div id="modalErr" class="form-error" style="display:none;font-size:13px;padding:8px 10px;background:#FEF2F2;border-radius:4px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitUpdate()">✅ Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+<script src="/js/api.js"></script>
+<script>
+  const complaintId = window.location.pathname.split('/').pop();
+  let staffList = [];
+
+  (async () => {
+    const user = await auth.requireAuth(['admin']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('admin', user, '/admin/complaints');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    await loadDetail();
+  })();
+
+  async function loadDetail() {
+    const data = await api.get(`/api/admin/complaints/${complaintId}`);
+    if (!data || !data.success) {
+      document.getElementById('content').innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><h3>Not found</h3><a href="/admin/complaints" class="btn btn-primary mt-md">← Back</a></div>`;
+      return;
+    }
+    const { complaint: c, logs } = data;
+    staffList = data.staffList || [];
+    document.getElementById('pageTitle').textContent = `#${c.complaint_id}`;
+
+    // Populate staff dropdown in modal
+    const staffSel = document.getElementById('modalStaff');
+    staffSel.innerHTML = `<option value="">— Keep Current —</option>` +
+      staffList.map(s => `<option value="${s.user_id}" ${c.assigned_to == s.user_id ? 'selected' : ''}>${escHtml(s.full_name)}</option>`).join('');
+
+    document.getElementById('content').innerHTML = `
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:var(--gap-lg);">
+        <div>
+          <div class="card mb-lg">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:var(--gap-md);">
+              <div>
+                <div class="text-xs text-mono text-muted mb-sm">#${c.complaint_id}</div>
+                <h2 style="font-size:18px;margin-bottom:8px;">${escHtml(c.title)}</h2>
+                <div style="display:flex;flex-wrap:wrap;gap:var(--gap-sm);">
+                  ${statusBadge(c.status)} ${priorityBadge(c.priority)}
+                  <span class="badge" style="background:var(--beige-dark);color:var(--charcoal-mid);">${categoryIcon(c.category)} ${capitalize(c.category)}</span>
+                </div>
+              </div>
+              <button class="btn btn-amber" onclick="openModal()">🔄 Update / Assign</button>
+            </div>
+            <div class="divider"></div>
+            <h4 style="margin-bottom:8px;">📝 Description</h4>
+            <p style="font-size:14px;line-height:1.7;color:var(--charcoal-mid);white-space:pre-wrap;">${escHtml(c.description)}</p>
+          </div>
+
+          <!-- Full Audit Log -->
+          <div class="card">
+            <h4 style="margin-bottom:var(--gap-lg);">🔍 Full Audit Log (${logs.length} entries)</h4>
+            ${logs.length ? `<div class="timeline">${logs.map(l => `
+              <div class="timeline-item status-${l.new_status||'pending'}">
+                <div class="timeline-dot">${{pending:'⏳',in_progress:'🔧',resolved:'✅',rejected:'❌'}[l.new_status]||'•'}</div>
+                <div class="timeline-content">
+                  <div class="timeline-header">
+                    <div class="timeline-title">${capitalize(l.old_status?.replace('_',' ')||'New')} → ${capitalize(l.new_status?.replace('_',' ')||'')}</div>
+                    <div class="timeline-time">${formatDateTime(l.changed_at)}</div>
+                  </div>
+                  ${l.remark ? `<div class="timeline-remark">${escHtml(l.remark)}</div>` : ''}
+                  <div class="timeline-by">By: <strong>${escHtml(l.changed_by_name)}</strong> (${capitalize(l.changed_by_role)})</div>
+                </div>
+              </div>`).join('')}
+            </div>` : `<p class="text-muted text-sm">No audit log entries yet.</p>`}
+          </div>
+        </div>
+
+        <!-- Info Panel -->
+        <div>
+          <div class="card mb-lg">
+            <h4 style="margin-bottom:var(--gap-md);">🎓 Student</h4>
+            <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Name</span><strong>${escHtml(c.student_name)}</strong></div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Room</span><strong>${escHtml(c.room_number||'—')}</strong></div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Email</span><span class="text-xs">${escHtml(c.student_email)}</span></div>
+              ${c.student_phone ? `<div style="display:flex;justify-content:space-between;"><span class="text-muted">Phone</span><span>${escHtml(c.student_phone)}</span></div>` : ''}
+            </div>
+          </div>
+          <div class="card mb-lg">
+            <h4 style="margin-bottom:var(--gap-md);">🔧 Assigned Staff</h4>
+            ${c.staff_name
+              ? `<div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+                   <div style="display:flex;justify-content:space-between;"><span class="text-muted">Name</span><strong>${escHtml(c.staff_name)}</strong></div>
+                   <div style="display:flex;justify-content:space-between;"><span class="text-muted">Email</span><span class="text-xs">${escHtml(c.staff_email||'—')}</span></div>
+                 </div>`
+              : `<p class="text-muted text-sm">No staff assigned yet.</p>`}
+          </div>
+          <div class="card mb-lg">
+            <h4 style="margin-bottom:var(--gap-md);">📋 Dates</h4>
+            <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Submitted</span><span class="text-xs">${formatDateTime(c.created_at)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Updated</span><span class="text-xs">${formatDateTime(c.updated_at)}</span></div>
+            </div>
+          </div>
+          <a href="/admin/complaints" class="btn btn-ghost w-full" style="justify-content:center;">← Back</a>
+        </div>
+      </div>`;
+  }
+
+  function openModal()  { document.getElementById('updateModal').classList.add('open'); }
+  function closeModal() { document.getElementById('updateModal').classList.remove('open'); }
+
+  async function submitUpdate() {
+    const status      = document.getElementById('modalStatus').value;
+    const assigned_to = document.getElementById('modalStaff').value;
+    const remark      = document.getElementById('modalRemark').value.trim();
+    const errEl       = document.getElementById('modalErr');
+    errEl.style.display = 'none';
+
+    if (!status && !assigned_to) { errEl.textContent = 'Select a status or staff member to update.'; errEl.style.display = 'block'; return; }
+
+    const body = {};
+    if (status)      body.status      = status;
+    if (assigned_to) body.assigned_to = parseInt(assigned_to);
+    if (remark)      body.remark      = remark;
+
+    const data = await api.put(`/api/admin/complaints/${complaintId}`, body);
+    if (data && data.success) {
+      toast.success('Complaint updated!');
+      closeModal();
+      await loadDetail();
+    } else {
+      errEl.textContent = data?.message || 'Update failed.';
+      errEl.style.display = 'block';
+    }
+  }
+
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>

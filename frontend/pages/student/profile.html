@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile — Hostel Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1>My Profile</h1>
+          <div class="breadcrumb">Account settings</div>
+        </div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">
+          🔔 <span class="notif-badge" id="notifBadge"></span>
+        </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header"><h4>Notifications</h4></div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body" style="max-width:640px;">
+      <div id="profileContent">
+        <div class="loading" style="padding:60px;"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  let profile = null;
+
+  (async () => {
+    const user = await auth.requireAuth(['student']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('student', user, '/student/profile');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    await loadProfile();
+  })();
+
+  async function loadProfile() {
+    const data = await api.get('/api/student/profile');
+    if (!data || !data.success) { toast.error('Failed to load profile.'); return; }
+    profile = data.user;
+    renderProfile();
+  }
+
+  function renderProfile() {
+    document.getElementById('profileContent').innerHTML = `
+      <!-- Profile Card -->
+      <div class="card mb-lg" style="display:flex;align-items:center;gap:var(--gap-lg);">
+        <div style="width:72px;height:72px;border-radius:50%;background:var(--maroon);display:flex;align-items:center;justify-content:center;font-family:var(--font-serif);font-size:28px;font-weight:700;color:white;flex-shrink:0;">
+          ${(profile.full_name || 'U')[0].toUpperCase()}
+        </div>
+        <div>
+          <h2 style="font-size:20px;margin-bottom:4px;">${escHtml(profile.full_name)}</h2>
+          <p class="text-muted text-sm">${escHtml(profile.email)}</p>
+          <span class="badge badge-role-student mt-sm" style="display:inline-flex;">🎓 Student</span>
+        </div>
+      </div>
+
+      <!-- Edit Form -->
+      <div class="card mb-lg">
+        <h3 style="margin-bottom:var(--gap-lg);">✏️ Edit Information</h3>
+        <form id="profileForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Full Name</label>
+              <input class="form-control" value="${escHtml(profile.full_name)}" disabled style="background:var(--beige);">
+              <span class="form-hint">Contact admin to change your name.</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input class="form-control" value="${escHtml(profile.email)}" disabled style="background:var(--beige);">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="room_number">Room Number</label>
+              <input class="form-control" type="text" id="room_number" value="${escHtml(profile.room_number || '')}" placeholder="e.g. A101">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="phone">Phone Number</label>
+              <input class="form-control" type="tel" id="phone" value="${escHtml(profile.phone || '')}" placeholder="e.g. 9876543210">
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <button class="btn btn-primary" type="submit" id="saveBtn">💾 Save Changes</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Password Change -->
+      <div class="card">
+        <h3 style="margin-bottom:var(--gap-lg);">🔒 Change Password</h3>
+        <form id="pwdForm">
+          <div class="form-group">
+            <label class="form-label" for="current_password">Current Password</label>
+            <input class="form-control" type="password" id="current_password" placeholder="Enter current password">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="new_password">New Password</label>
+              <input class="form-control" type="password" id="new_password" placeholder="Minimum 6 characters">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="confirm_password">Confirm New Password</label>
+              <input class="form-control" type="password" id="confirm_password" placeholder="Re-enter new password">
+            </div>
+          </div>
+          <div id="pwdError" class="form-error" style="display:none;font-size:13px;padding:8px 10px;background:#FEF2F2;border-radius:4px;border:1px solid #FCA5A5;margin-bottom:var(--gap-md);"></div>
+          <div style="text-align:right;">
+            <button class="btn btn-outline" type="submit" id="pwdBtn">🔄 Update Password</button>
+          </div>
+        </form>
+      </div>`;
+
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      const data = await api.put('/api/student/profile', {
+        room_number: document.getElementById('room_number').value.trim(),
+        phone:       document.getElementById('phone').value.trim()
+      });
+      if (data && data.success) toast.success('Profile updated successfully!');
+      else toast.error(data?.message || 'Update failed.');
+      btn.disabled = false; btn.textContent = '💾 Save Changes';
+    });
+
+    document.getElementById('pwdForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const current_password = document.getElementById('current_password').value;
+      const new_password     = document.getElementById('new_password').value;
+      const confirm          = document.getElementById('confirm_password').value;
+      const errEl            = document.getElementById('pwdError');
+      errEl.style.display    = 'none';
+
+      if (!current_password || !new_password) { errEl.textContent = 'All password fields are required.'; errEl.style.display = 'block'; return; }
+      if (new_password !== confirm) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; return; }
+      if (new_password.length < 6) { errEl.textContent = 'New password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
+
+      const btn = document.getElementById('pwdBtn');
+      btn.disabled = true; btn.textContent = 'Updating…';
+      const data = await api.put('/api/student/profile', { current_password, new_password });
+      if (data && data.success) { toast.success('Password changed!'); document.getElementById('pwdForm').reset(); }
+      else { errEl.textContent = data?.message || 'Failed.'; errEl.style.display = 'block'; }
+      btn.disabled = false; btn.textContent = '🔄 Update Password';
+    });
+  }
+
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>

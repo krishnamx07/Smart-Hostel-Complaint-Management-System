@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit User — Admin Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1>Edit User</h1>
+          <div class="breadcrumb"><a href="/admin/user-management">User Management</a> / Edit</div>
+        </div>
+      </div>
+    </header>
+    <div class="page-body" style="max-width:680px;">
+      <div id="content"><div class="loading" style="padding:60px;"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+<script src="/js/api.js"></script>
+<script>
+  const userId = window.location.pathname.split('/').pop();
+
+  (async () => {
+    const user = await auth.requireAuth(['admin']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('admin', user, '/admin/user-management');
+    await loadUser();
+  })();
+
+  async function loadUser() {
+    const data = await api.get(`/api/admin/users/${userId}`);
+    if (!data || !data.success) {
+      document.getElementById('content').innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><h3>User not found</h3><a href="/admin/user-management" class="btn btn-primary mt-md">← Back</a></div>`;
+      return;
+    }
+    const u = data.user;
+
+    document.getElementById('content').innerHTML = `
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:var(--gap-md);margin-bottom:var(--gap-lg);">
+          <div style="width:52px;height:52px;border-radius:50%;background:var(--maroon);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:white;flex-shrink:0;">${(u.full_name||'U')[0].toUpperCase()}</div>
+          <div>
+            <h2 style="font-size:18px;">${escHtml(u.full_name)}</h2>
+            <p class="text-muted text-sm">${escHtml(u.email)}</p>
+          </div>
+        </div>
+
+        <form id="editForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="full_name">Full Name</label>
+              <input class="form-control" type="text" id="full_name" value="${escHtml(u.full_name)}">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="email">Email Address</label>
+              <input class="form-control" type="email" id="email" value="${escHtml(u.email)}">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="role">Role</label>
+              <div class="select-wrapper">
+                <select class="form-control" id="role">
+                  <option value="student" ${u.role==='student'?'selected':''}>🎓 Student</option>
+                  <option value="staff"   ${u.role==='staff'  ?'selected':''}>🔧 Staff</option>
+                  <option value="admin"   ${u.role==='admin'  ?'selected':''}>⚙️ Admin</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="phone">Phone</label>
+              <input class="form-control" type="tel" id="phone" value="${escHtml(u.phone||'')}">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="room_number">Room Number</label>
+              <input class="form-control" type="text" id="room_number" value="${escHtml(u.room_number||'')}">
+            </div>
+            <div class="form-group"></div>
+          </div>
+          ${u.role === 'staff' ? `
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Department</label>
+              <div class="select-wrapper">
+                <select class="form-control" id="department">
+                  ${['maintenance','housekeeping','security','warden','admin'].map(d => `<option value="${d}" ${u.department===d?'selected':''}>${capitalize(d)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Shift</label>
+              <div class="select-wrapper">
+                <select class="form-control" id="shift">
+                  ${['morning','evening','night'].map(s => `<option value="${s}" ${u.shift===s?'selected':''}>${capitalize(s)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+          </div>` : ''}
+
+          <div class="divider"></div>
+          <h4 style="margin-bottom:var(--gap-md);">🔒 Reset Password (optional)</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="new_password">New Password</label>
+              <input class="form-control" type="password" id="new_password" placeholder="Leave blank to keep current">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="confirm_password">Confirm Password</label>
+              <input class="form-control" type="password" id="confirm_password" placeholder="Confirm new password">
+            </div>
+          </div>
+
+          <div id="formError" style="display:none;font-size:13px;padding:10px 12px;background:#FEF2F2;border-radius:6px;border:1px solid #FCA5A5;color:#DC2626;margin-bottom:var(--gap-md);"></div>
+
+          <div style="display:flex;gap:var(--gap-sm);justify-content:flex-end;">
+            <a href="/admin/user-management" class="btn btn-ghost">Cancel</a>
+            <button type="submit" class="btn btn-primary" id="submitBtn">💾 Save Changes</button>
+          </div>
+        </form>
+      </div>`;
+
+    document.getElementById('editForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = {
+        full_name:   document.getElementById('full_name').value.trim(),
+        email:       document.getElementById('email').value.trim(),
+        role:        document.getElementById('role').value,
+        phone:       document.getElementById('phone').value.trim(),
+        room_number: document.getElementById('room_number').value.trim()
+      };
+      const pwd  = document.getElementById('new_password').value;
+      const cpwd = document.getElementById('confirm_password').value;
+      const errEl = document.getElementById('formError');
+      errEl.style.display = 'none';
+
+      if (pwd) {
+        if (pwd !== cpwd) { errEl.textContent='Passwords do not match.'; errEl.style.display='block'; return; }
+        if (pwd.length < 6) { errEl.textContent='Password too short.'; errEl.style.display='block'; return; }
+        body.password = pwd;
+      }
+      if (document.getElementById('department')) body.department = document.getElementById('department').value;
+      if (document.getElementById('shift'))      body.shift      = document.getElementById('shift').value;
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      const data = await api.put(`/api/admin/users/${userId}`, body);
+      if (data && data.success) {
+        toast.success('User updated!');
+        setTimeout(() => window.location.href = '/admin/user-management', 1200);
+      } else {
+        errEl.textContent = data?.message || 'Update failed.';
+        errEl.style.display = 'block';
+        btn.disabled = false; btn.textContent = '💾 Save Changes';
+      }
+    });
+  }
+</script>
+</body>
+</html>

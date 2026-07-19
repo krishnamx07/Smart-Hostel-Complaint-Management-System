@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Complaints — Hostel Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1>My Complaints</h1>
+          <div class="breadcrumb">All my submitted complaints</div>
+        </div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <a href="/student/raise-complaint" class="btn btn-primary btn-sm">📝 New Complaint</a>
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">
+          🔔 <span class="notif-badge" id="notifBadge"></span>
+        </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header"><h4>Notifications</h4><span class="notif-read-all" onclick="notifications.markAllRead()">Mark all read</span></div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+      <div class="table-wrapper">
+        <div class="filter-bar">
+          <div class="select-wrapper">
+            <select class="form-control" id="filterStatus" onchange="applyFilters()">
+              <option value="">All Statuses</option>
+              <option value="pending">Submitted</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Fixed!</option>
+              <option value="rejected">Declined</option>
+            </select>
+          </div>
+          <div class="select-wrapper">
+            <select class="form-control" id="filterCategory" onchange="applyFilters()">
+              <option value="">All Categories</option>
+              <option value="electrical">⚡ Electrical</option>
+              <option value="plumbing">🚿 Plumbing</option>
+              <option value="cleanliness">🧹 Cleanliness</option>
+              <option value="food">🍽️ Food</option>
+              <option value="security">🔒 Security</option>
+              <option value="noise">🔊 Noise</option>
+              <option value="other">📌 Other</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="resetFilters()">✕ Reset</button>
+        </div>
+
+        <div id="tableBody">
+          <div class="loading" style="padding:48px;"><div class="spinner"></div></div>
+        </div>
+
+        <div class="table-footer">
+          <span id="tableInfo">Loading…</span>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  let currentPage = 1;
+
+  (async () => {
+    const user = await auth.requireAuth(['student']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('student', user, '/student/my-complaints');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    await loadComplaints();
+  })();
+
+  async function loadComplaints(page = 1) {
+    currentPage = page;
+    const status   = document.getElementById('filterStatus').value;
+    const category = document.getElementById('filterCategory').value;
+
+    let url = `/api/student/complaints?page=${page}&limit=10`;
+    if (status)   url += `&status=${status}`;
+    if (category) url += `&category=${category}`;
+
+    const data = await api.get(url);
+    if (!data || !data.success) { toast.error('Failed to load complaints.'); return; }
+
+    const { complaints, pagination } = data;
+    const total      = pagination.total;
+    const totalPages = Math.ceil(total / pagination.limit);
+
+    document.getElementById('tableInfo').textContent =
+      total ? `Showing ${complaints.length} of ${total} complaints` : 'No complaints found.';
+
+    if (!complaints.length) {
+      document.getElementById('tableBody').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📭</div>
+          <h3>No Complaints Found</h3>
+          <p>You haven't raised any complaints yet${status || category ? ' matching these filters' : ''}.</p>
+          <a href="/student/raise-complaint" class="btn btn-primary">📝 Raise a Complaint</a>
+        </div>`;
+      return;
+    }
+
+    document.getElementById('tableBody').innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Category</th><th>Title</th>
+            <th>Priority</th><th>Status</th><th>Date</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${complaints.map(c => `
+            <tr>
+              <td class="text-mono text-xs">#${c.complaint_id}</td>
+              <td>${categoryIcon(c.category)} ${capitalize(c.category)}</td>
+              <td style="max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(c.title)}</td>
+              <td>${priorityBadge(c.priority)}</td>
+              <td>${statusBadge(c.status)}</td>
+              <td class="text-xs text-muted">${formatDate(c.created_at)}</td>
+              <td>
+                <a href="/student/complaint/${c.complaint_id}" class="btn btn-ghost btn-sm">View →</a>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    buildPagination(document.getElementById('pagination'), page, totalPages,
+      `(p) => loadComplaints(p)`);
+  }
+
+  function applyFilters() { loadComplaints(1); }
+  function resetFilters() {
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterCategory').value = '';
+    loadComplaints(1);
+  }
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>

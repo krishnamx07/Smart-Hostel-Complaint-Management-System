@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Complaint Detail — Hostel Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1 id="pageTitle">Complaint Detail</h1>
+          <div class="breadcrumb"><a href="/student/my-complaints">My Complaints</a> / Detail</div>
+        </div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">
+          🔔 <span class="notif-badge" id="notifBadge"></span>
+        </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header"><h4>Notifications</h4></div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+      <div id="content">
+        <div class="loading" style="padding:60px;"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  const complaintId = window.location.pathname.split('/').pop();
+
+  (async () => {
+    const user = await auth.requireAuth(['student']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('student', user, '/student/my-complaints');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    await loadDetail();
+  })();
+
+  async function loadDetail() {
+    const data = await api.get(`/api/student/complaints/${complaintId}`);
+    if (!data || !data.success) {
+      document.getElementById('content').innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><h3>Complaint not found</h3><a href="/student/my-complaints" class="btn btn-primary">← Back</a></div>`;
+      return;
+    }
+    const { complaint: c, logs } = data;
+    document.getElementById('pageTitle').textContent = `#${c.complaint_id} — ${c.title}`;
+
+    const statusSteps = ['pending','in_progress','resolved'];
+    const currentIdx  = statusSteps.indexOf(c.status);
+    const isRejected  = c.status === 'rejected';
+
+    document.getElementById('content').innerHTML = `
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:var(--gap-lg);">
+
+        <div>
+          <!-- Status Progress Bar -->
+          <div class="card mb-lg">
+            <h4 style="margin-bottom:var(--gap-md);">📍 Status Progress</h4>
+            <div class="status-progress-bar">
+              ${isRejected ? `
+                <div class="progress-step rejected">
+                  <div class="progress-step-circle">❌</div>
+                  <div class="progress-step-label">Declined</div>
+                </div>` : statusSteps.map((s, i) => `
+                <div class="progress-step ${i < currentIdx ? 'done' : i === currentIdx ? 'active' : ''}">
+                  <div class="progress-step-circle">${i < currentIdx ? '✓' : i === currentIdx ? (s === 'pending' ? '⏳' : s === 'in_progress' ? '🔧' : '✅') : (i+1)}</div>
+                  <div class="progress-step-label">${statusLabel(s)}</div>
+                </div>
+                ${i < statusSteps.length - 1 ? `<div class="progress-connector ${i < currentIdx ? 'done' : ''}"></div>` : ''}
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- Complaint Details -->
+          <div class="card mb-lg">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:var(--gap-md);margin-bottom:var(--gap-md);flex-wrap:wrap;">
+              <div>
+                <div class="text-xs text-mono text-muted mb-sm">Complaint ID: #${c.complaint_id}</div>
+                <h2 style="font-size:18px;margin-bottom:8px;">${escHtml(c.title)}</h2>
+                <div style="display:flex;gap:var(--gap-sm);flex-wrap:wrap;">
+                  ${statusBadge(c.status)} ${priorityBadge(c.priority)}
+                  <span class="badge" style="background:var(--beige-dark);color:var(--charcoal-mid);">
+                    ${categoryIcon(c.category)} ${capitalize(c.category)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <p style="font-size:14px;line-height:1.7;color:var(--charcoal-mid);white-space:pre-wrap;">${escHtml(c.description)}</p>
+          </div>
+
+          <!-- Timeline -->
+          <div class="card">
+            <h4 style="margin-bottom:var(--gap-lg);">🕐 Status History</h4>
+            ${logs.length ? `<div class="timeline">${logs.map(l => `
+              <div class="timeline-item status-${l.new_status || 'pending'}">
+                <div class="timeline-dot">
+                  ${statusIcon(l.new_status)}
+                </div>
+                <div class="timeline-content">
+                  <div class="timeline-header">
+                    <div class="timeline-title">Status → ${statusLabel(l.new_status)}</div>
+                    <div class="timeline-time">${formatDateTime(l.changed_at)}</div>
+                  </div>
+                  ${l.remark ? `<div class="timeline-remark">${escHtml(l.remark)}</div>` : ''}
+                  <div class="timeline-by">Updated by ${escHtml(l.changed_by_name)} (${capitalize(l.changed_by_role)})</div>
+                </div>
+              </div>`).join('')}
+            </div>` : `<div class="empty-state" style="padding:var(--gap-xl) 0;"><div class="empty-state-icon" style="font-size:32px;">📋</div><p>No status changes yet. Your complaint is being reviewed.</p></div>`}
+          </div>
+        </div>
+
+        <!-- Sidebar Info -->
+        <div>
+          <div class="card mb-lg">
+            <h4 style="margin-bottom:var(--gap-md);">📋 Complaint Info</h4>
+            <div style="display:flex;flex-direction:column;gap:12px;font-size:14px;">
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">ID</span><span class="text-mono">#${c.complaint_id}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Category</span><span>${categoryIcon(c.category)} ${capitalize(c.category)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Priority</span>${priorityBadge(c.priority)}</div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Status</span>${statusBadge(c.status)}</div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Submitted</span><span class="text-xs">${formatDateTime(c.created_at)}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span class="text-muted">Updated</span><span class="text-xs">${formatDateTime(c.updated_at)}</span></div>
+            </div>
+          </div>
+          ${c.staff_name ? `
+          <div class="card">
+            <h4 style="margin-bottom:var(--gap-md);">🔧 Assigned Staff</h4>
+            <div style="font-size:14px;"><strong>${escHtml(c.staff_name)}</strong></div>
+          </div>` : `
+          <div class="card">
+            <h4 style="color:var(--charcoal-light);">🔧 Assigned Staff</h4>
+            <p class="text-muted text-sm" style="margin-top:8px;">Not yet assigned. Admin will review soon.</p>
+          </div>`}
+          <div style="margin-top:var(--gap-md);">
+            <a href="/student/my-complaints" class="btn btn-ghost w-full" style="justify-content:center;">← Back to Complaints</a>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function statusLabel(s) {
+    return { pending: 'Submitted', in_progress: 'In Progress', resolved: 'Fixed!', rejected: 'Declined' }[s] || s;
+  }
+  function statusIcon(s) {
+    return { pending: '⏳', in_progress: '🔧', resolved: '✅', rejected: '❌' }[s] || '•';
+  }
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>

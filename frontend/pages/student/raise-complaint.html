@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raise Complaint — Hostel Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left">
+          <h1>Raise a Complaint</h1>
+          <div class="breadcrumb">Dashboard / New Complaint</div>
+        </div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">
+          🔔 <span class="notif-badge" id="notifBadge"></span>
+        </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header">
+            <h4>Notifications</h4>
+            <span class="notif-read-all" onclick="notifications.markAllRead()">Mark all read</span>
+          </div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body" style="max-width:700px;">
+      <div class="card">
+        <div style="margin-bottom:var(--gap-lg);">
+          <h2 style="font-family:var(--font-serif);font-size:20px;margin-bottom:4px;">📝 Submit a New Complaint</h2>
+          <p class="text-muted text-sm">Fill in the details below. Be as descriptive as possible to help staff resolve your issue quickly.</p>
+        </div>
+
+        <form id="complaintForm" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="category">Category <span class="required">*</span></label>
+              <div class="select-wrapper">
+                <select class="form-control" id="category" required>
+                  <option value="">— Select Category —</option>
+                  <option value="electrical">⚡ Electrical</option>
+                  <option value="plumbing">🚿 Plumbing</option>
+                  <option value="cleanliness">🧹 Cleanliness</option>
+                  <option value="food">🍽️ Food</option>
+                  <option value="security">🔒 Security</option>
+                  <option value="noise">🔊 Noise</option>
+                  <option value="other">📌 Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Priority <span class="required">*</span></label>
+              <div class="priority-selector">
+                <input class="priority-option" type="radio" name="priority" id="p_low" value="low">
+                <label class="priority-label" for="p_low">🟢 Low</label>
+                <input class="priority-option" type="radio" name="priority" id="p_med" value="medium" checked>
+                <label class="priority-label" for="p_med">🟡 Medium</label>
+                <input class="priority-option" type="radio" name="priority" id="p_high" value="high">
+                <label class="priority-label" for="p_high">🔴 High</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="title">Complaint Title <span class="required">*</span></label>
+            <input class="form-control" type="text" id="title" maxlength="200"
+                   placeholder="Brief title of the issue (e.g. Fan not working in room A101)" required>
+            <span class="form-hint"><span id="titleCount">0</span>/200 characters</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="description">Detailed Description <span class="required">*</span></label>
+            <textarea class="form-control" id="description" rows="5"
+                      placeholder="Describe the problem in detail — when did it start, how often, what impact it has…" required></textarea>
+          </div>
+
+          <div id="formError" class="form-error" style="display:none;font-size:14px;padding:10px 12px;background:#FEF2F2;border-radius:6px;border:1px solid #FCA5A5;margin-bottom:var(--gap-md);"></div>
+
+          <div style="display:flex;gap:var(--gap-sm);justify-content:flex-end;flex-wrap:wrap;">
+            <a href="/student/my-complaints" class="btn btn-ghost">Cancel</a>
+            <button type="submit" class="btn btn-primary" id="submitBtn">
+              <span id="submitText">📤 Submit Complaint</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Priority Guide -->
+      <div class="card mt-lg">
+        <h4 style="margin-bottom:var(--gap-md);">📘 Priority Guide</h4>
+        <div style="display:flex;flex-direction:column;gap:var(--gap-sm);">
+          <div style="display:flex;align-items:center;gap:var(--gap-sm);font-size:13px;">
+            <span class="badge badge-priority-high">🔴 High</span>
+            <span class="text-muted">Safety hazards, major disruptions, urgent safety concerns</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--gap-sm);font-size:13px;">
+            <span class="badge badge-priority-medium">🟡 Medium</span>
+            <span class="text-muted">Ongoing inconveniences affecting daily life</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--gap-sm);font-size:13px;">
+            <span class="badge badge-priority-low">🟢 Low</span>
+            <span class="text-muted">Minor issues, suggestions, or non-urgent requests</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  (async () => {
+    const user = await auth.requireAuth(['student']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('student', user, '/student/raise-complaint');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+  })();
+
+  document.getElementById('title').addEventListener('input', function() {
+    document.getElementById('titleCount').textContent = this.value.length;
+  });
+
+  document.getElementById('complaintForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const category    = document.getElementById('category').value;
+    const title       = document.getElementById('title').value.trim();
+    const description = document.getElementById('description').value.trim();
+    const priority    = document.querySelector('input[name="priority"]:checked')?.value || 'medium';
+    const errEl       = document.getElementById('formError');
+    const btn         = document.getElementById('submitBtn');
+    const btnText     = document.getElementById('submitText');
+
+    errEl.style.display = 'none';
+
+    if (!category) { errEl.textContent = 'Please select a category.'; errEl.style.display = 'block'; return; }
+    if (!title)    { errEl.textContent = 'Please enter a complaint title.'; errEl.style.display = 'block'; return; }
+    if (!description || description.length < 10) {
+      errEl.textContent = 'Please provide a detailed description (at least 10 characters).';
+      errEl.style.display = 'block'; return;
+    }
+
+    btn.disabled = true;
+    btnText.textContent = '⏳ Submitting…';
+
+    const data = await api.post('/api/student/complaints', { category, title, description, priority });
+
+    if (data && data.success) {
+      toast.success(`Complaint #${data.complaint_id} submitted successfully!`);
+      setTimeout(() => window.location.href = '/student/my-complaints', 1200);
+    } else {
+      errEl.textContent = (data && data.message) || 'Submission failed.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btnText.textContent = '📤 Submit Complaint';
+    }
+  });
+
+  function toggleNotifDropdown() {
+    document.getElementById('notifDropdown').classList.toggle('open');
+  }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>

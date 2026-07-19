@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create User — Admin Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left"><h1>Create New User</h1><div class="breadcrumb"><a href="/admin/user-management">User Management</a> / Create</div></div>
+      </div>
+    </header>
+
+    <div class="page-body" style="max-width:680px;">
+      <div class="card">
+        <h2 style="font-size:18px;margin-bottom:4px;">➕ New User Account</h2>
+        <p class="text-muted text-sm mb-lg">Creating a user will also provision a MySQL database user with role-appropriate privileges.</p>
+
+        <form id="createForm" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="full_name">Full Name <span class="required">*</span></label>
+              <input class="form-control" type="text" id="full_name" placeholder="e.g. Ravi Kumar" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="email">Email Address <span class="required">*</span></label>
+              <input class="form-control" type="email" id="email" placeholder="e.g. ravi@hostel.com" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="role">Role <span class="required">*</span></label>
+              <div class="select-wrapper">
+                <select class="form-control" id="role" onchange="toggleRoleFields()" required>
+                  <option value="">— Select Role —</option>
+                  <option value="student">🎓 Student</option>
+                  <option value="staff">🔧 Staff</option>
+                  <option value="admin">⚙️ Admin</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="phone">Phone Number</label>
+              <input class="form-control" type="tel" id="phone" placeholder="e.g. 9876543210">
+            </div>
+          </div>
+
+          <!-- Student Fields -->
+          <div id="studentFields" class="hidden">
+            <div class="form-group">
+              <label class="form-label" for="room_number">Room Number</label>
+              <input class="form-control" type="text" id="room_number" placeholder="e.g. A101">
+            </div>
+          </div>
+
+          <!-- Staff Fields -->
+          <div id="staffFields" class="hidden">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="department">Department</label>
+                <div class="select-wrapper">
+                  <select class="form-control" id="department">
+                    <option value="maintenance">🔧 Maintenance</option>
+                    <option value="housekeeping">🧹 Housekeeping</option>
+                    <option value="security">🔒 Security</option>
+                    <option value="warden">🏠 Warden</option>
+                    <option value="admin">⚙️ Admin</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="shift">Shift</label>
+                <div class="select-wrapper">
+                  <select class="form-control" id="shift">
+                    <option value="morning">🌅 Morning</option>
+                    <option value="evening">🌆 Evening</option>
+                    <option value="night">🌙 Night</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="password">Password <span class="required">*</span></label>
+              <input class="form-control" type="password" id="password" placeholder="Minimum 6 characters" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="confirm_password">Confirm Password <span class="required">*</span></label>
+              <input class="form-control" type="password" id="confirm_password" placeholder="Re-enter password" required>
+            </div>
+          </div>
+
+          <!-- MySQL Privilege Preview -->
+          <div id="privilegePreview" class="card" style="background:var(--beige);border-color:var(--border-dark);margin-bottom:var(--gap-lg);display:none;">
+            <h4 style="margin-bottom:8px;">🔐 MySQL Privileges (will be granted)</h4>
+            <div id="privilegeText" class="text-sm text-muted" style="font-family:var(--font-mono);font-size:12px;line-height:1.8;"></div>
+          </div>
+
+          <div id="formError" style="display:none;font-size:13px;padding:10px 12px;background:#FEF2F2;border-radius:6px;border:1px solid #FCA5A5;color:#DC2626;margin-bottom:var(--gap-md);"></div>
+
+          <div style="display:flex;gap:var(--gap-sm);justify-content:flex-end;">
+            <a href="/admin/user-management" class="btn btn-ghost">Cancel</a>
+            <button type="submit" class="btn btn-primary" id="submitBtn">
+              <span id="submitText">➕ Create User & Provision MySQL</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+<script src="/js/api.js"></script>
+<script>
+  const privilegeMap = {
+    student: `SELECT on users\nSELECT, INSERT on complaints\nSELECT on complaint_logs\nSELECT on notifications\nSELECT on pending_complaints_view`,
+    staff:   `SELECT on users\nSELECT, UPDATE on complaints\nSELECT, INSERT on complaint_logs\nSELECT on staff_profiles\nSELECT, INSERT on notifications`,
+    admin:   `ALL PRIVILEGES on hostel_db.* WITH GRANT OPTION`
+  };
+
+  (async () => {
+    const user = await auth.requireAuth(['admin']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('admin', user, '/admin/create-user');
+  })();
+
+  function toggleRoleFields() {
+    const role = document.getElementById('role').value;
+    document.getElementById('studentFields').classList.toggle('hidden', role !== 'student');
+    document.getElementById('staffFields').classList.toggle('hidden',   role !== 'staff');
+    const prev = document.getElementById('privilegePreview');
+    const txt  = document.getElementById('privilegeText');
+    if (role && privilegeMap[role]) {
+      prev.style.display = 'block';
+      txt.textContent    = privilegeMap[role];
+    } else {
+      prev.style.display = 'none';
+    }
+  }
+
+  document.getElementById('createForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const full_name       = document.getElementById('full_name').value.trim();
+    const email           = document.getElementById('email').value.trim();
+    const role            = document.getElementById('role').value;
+    const phone           = document.getElementById('phone').value.trim();
+    const password        = document.getElementById('password').value;
+    const confirm_password= document.getElementById('confirm_password').value;
+    const room_number     = document.getElementById('room_number').value.trim();
+    const department      = document.getElementById('department').value;
+    const shift           = document.getElementById('shift').value;
+    const errEl           = document.getElementById('formError');
+    const btn             = document.getElementById('submitBtn');
+    const btnText         = document.getElementById('submitText');
+
+    errEl.style.display = 'none';
+
+    if (!full_name || !email || !role || !password) { errEl.textContent = 'Name, email, role, and password are required.'; errEl.style.display='block'; return; }
+    if (password !== confirm_password) { errEl.textContent = 'Passwords do not match.'; errEl.style.display='block'; return; }
+    if (password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display='block'; return; }
+
+    btn.disabled = true;
+    btnText.textContent = '⏳ Creating user & provisioning MySQL…';
+
+    const body = { full_name, email, role, phone, password };
+    if (role === 'student') body.room_number = room_number;
+    if (role === 'staff')   { body.department = department; body.shift = shift; }
+
+    const data = await api.post('/api/admin/users', body);
+    if (data && data.success) {
+      toast.success(`User created! ID: #${data.user_id}`);
+      setTimeout(() => window.location.href = '/admin/user-management', 1200);
+    } else {
+      errEl.textContent = data?.message || 'Creation failed.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btnText.textContent = '➕ Create User & Provision MySQL';
+    }
+  });
+</script>
+</body>
+</html>

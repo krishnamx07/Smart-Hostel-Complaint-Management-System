@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>All Complaints — Admin Portal</title>
+  <link rel="stylesheet" href="/css/hostel-theme.css">
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebarContainer"></div>
+
+  <div class="main-content">
+    <header class="top-header">
+      <div style="display:flex;align-items:center;gap:var(--gap-md);">
+        <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
+        <div class="header-left"><h1>All Complaints</h1><div class="breadcrumb">Full complaints management</div></div>
+      </div>
+      <div class="header-actions" style="position:relative;">
+        <div class="notif-bell" id="notifBell" onclick="toggleNotifDropdown()">🔔 <span class="notif-badge" id="notifBadge"></span></div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-header"><h4>Notifications</h4></div>
+          <div class="notif-list" id="notifList"></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+      <div class="table-wrapper">
+        <div class="filter-bar">
+          <div class="select-wrapper">
+            <select class="form-control" id="fStatus" onchange="loadComplaints(1)">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <div class="select-wrapper">
+            <select class="form-control" id="fCategory" onchange="loadComplaints(1)">
+              <option value="">All Categories</option>
+              <option value="electrical">⚡ Electrical</option>
+              <option value="plumbing">🚿 Plumbing</option>
+              <option value="cleanliness">🧹 Cleanliness</option>
+              <option value="food">🍽️ Food</option>
+              <option value="security">🔒 Security</option>
+              <option value="noise">🔊 Noise</option>
+              <option value="other">📌 Other</option>
+            </select>
+          </div>
+          <div class="select-wrapper">
+            <select class="form-control" id="fPriority" onchange="loadComplaints(1)">
+              <option value="">All Priorities</option>
+              <option value="high">🔴 High</option>
+              <option value="medium">🟡 Medium</option>
+              <option value="low">🟢 Low</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="resetFilters()">✕ Reset</button>
+        </div>
+
+        <div id="tableBody"><div class="loading" style="padding:48px;"><div class="spinner"></div></div></div>
+        <div class="table-footer">
+          <span id="tableInfo">Loading…</span>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast-container"></div>
+
+<script src="/js/api.js"></script>
+<script>
+  (async () => {
+    const user = await auth.requireAuth(['admin']);
+    if (!user) return;
+    document.getElementById('sidebarContainer').innerHTML = sidebar.render('admin', user, '/admin/complaints');
+    await notifications.loadBell(document.getElementById('notifBell'), document.getElementById('notifBadge'), document.getElementById('notifDropdown'));
+    await loadComplaints();
+  })();
+
+  async function loadComplaints(page = 1) {
+    const status   = document.getElementById('fStatus').value;
+    const category = document.getElementById('fCategory').value;
+    const priority = document.getElementById('fPriority').value;
+
+    let url = `/api/admin/complaints?page=${page}&limit=15`;
+    if (status)   url += `&status=${status}`;
+    if (category) url += `&category=${category}`;
+    if (priority) url += `&priority=${priority}`;
+
+    const data = await api.get(url);
+    if (!data || !data.success) { toast.error('Failed to load complaints.'); return; }
+
+    const { complaints, pagination } = data;
+    document.getElementById('tableInfo').textContent = `Showing ${complaints.length} of ${pagination.total} complaints`;
+
+    if (!complaints.length) {
+      document.getElementById('tableBody').innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><h3>No complaints found</h3><p>Try adjusting your filters.</p></div>`;
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    document.getElementById('tableBody').innerHTML = `
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Category</th><th>Title</th><th>Student</th><th>Room</th><th>Staff</th><th>Priority</th><th>Status</th><th>Date</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          ${complaints.map(c => `
+            <tr>
+              <td class="text-mono text-xs">#${c.complaint_id}</td>
+              <td>${categoryIcon(c.category)} ${capitalize(c.category)}</td>
+              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(c.title)}</td>
+              <td>${escHtml(c.student_name)}</td>
+              <td>${escHtml(c.room_number||'—')}</td>
+              <td>${c.staff_name ? escHtml(c.staff_name) : '<span class="text-muted text-xs">Unassigned</span>'}</td>
+              <td>${priorityBadge(c.priority)}</td>
+              <td>${statusBadge(c.status)}</td>
+              <td class="text-xs text-muted">${formatDate(c.created_at)}</td>
+              <td><a href="/admin/complaint/${c.complaint_id}" class="btn btn-ghost btn-sm">View →</a></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    buildPagination(document.getElementById('pagination'), page, Math.ceil(pagination.total / pagination.limit),
+      `(p) => loadComplaints(p)`);
+  }
+
+  function resetFilters() {
+    ['fStatus','fCategory','fPriority'].forEach(id => document.getElementById(id).value = '');
+    loadComplaints(1);
+  }
+
+  function toggleNotifDropdown() { document.getElementById('notifDropdown').classList.toggle('open'); }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notifBell') && !e.target.closest('#notifDropdown'))
+      document.getElementById('notifDropdown')?.classList.remove('open');
+  });
+</script>
+</body>
+</html>
