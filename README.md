@@ -771,10 +771,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 
 
-### ⭐ If you find this project helpful, please give it a star!
-
-Made by [Shreekrishna Patil](https://github.com/Shreekrishnapatil7588)
-
-[Back to Top](#-smart-hostel-complaint-management-system)
 
 </div>
